@@ -1,0 +1,21 @@
+product_id,product_name,category,unit_cost,selling_price,stock_quantity,reorder_level
+PROD-001,Aashirvaad Shudh Chakki Atta 5kg,Grains & Staples,210.0,240.0,12,5
+PROD-002,Tata Sampann Toor Dal 1kg,Grains & Staples,140.0,165.0,8,6
+PROD-003,Madhur Pure & Hygienic Sugar 1kg,Grains & Staples,40.0,46.0,25,10
+PROD-004,Fortune Kachi Ghani Mustard Oil 1L,Edible Oils & Spices,128.0,145.0,15,6
+PROD-005,Tata Salt Vacuum Evaporated 1kg,Edible Oils & Spices,23.0,28.0,30,10
+PROD-006,Everest Turmeric Powder 100g,Edible Oils & Spices,28.0,34.0,18,8
+PROD-007,MDH Deggi Mirch Powder 100g,Edible Oils & Spices,70.0,82.0,4,5
+PROD-008,Brooke Bond Red Label Tea 250g,Beverages,98.0,115.0,14,6
+PROD-009,Nescafe Classic Coffee 50g,Beverages,138.0,160.0,3,5
+PROD-010,Maggi 2-Minute Masala Noodles 70g,Snacks & Packaged Foods,11.5,14.0,45,15
+PROD-011,Parle-G Gold Biscuits 250g,Snacks & Packaged Foods,20.0,25.0,35,12
+PROD-012,Britannia Good Day Butter Cookies 200g,Snacks & Packaged Foods,25.0,30.0,20,8
+PROD-013,Haldiram Nagpur Aloo Bhujia 200g,Snacks & Packaged Foods,45.0,55.0,16,6
+PROD-014,Lay's India's Magic Masala Chips 50g,Snacks & Packaged Foods,16.0,20.0,22,10
+PROD-015,Amul Taaza Toned Milk 500ml,Dairy & Bakery,24.5,27.0,18,8
+PROD-016,Britannia Whole Wheat Bread 400g,Dairy & Bakery,33.0,40.0,2,5
+PROD-017,Dettol Original Bathing Soap 75g,Personal Care & Hygiene,31.0,38.0,24,8
+PROD-018,Colgate Strong Teeth Toothpaste 100g,Personal Care & Hygiene,54.0,65.0,11,5
+PROD-019,Surf Excel Easy Wash Detergent Powder 500g,Household & Cleaning,58.0,70.0,9,6
+PROD-020,Rin Detergent Bar 250g,Household & Cleaning,16.0,20.0,32,10

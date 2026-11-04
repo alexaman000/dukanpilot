@@ -1,0 +1,41 @@
+customer_id,customer_segment,visit_frequency,average_order_value,preferred_category
+CUST-001,Budget Essentials,2-3 times/week,47.9,Grains & Staples
+CUST-002,Weekly Family Shopper,Weekly,220.2,Edible Oils & Spices
+CUST-003,Budget Essentials,2-3 times/week,47.8,Grains & Staples
+CUST-004,Budget Essentials,2-3 times/week,51.8,Grains & Staples
+CUST-005,Daily Regular,Daily,41.7,Dairy & Bakery
+CUST-006,Daily Regular,Daily,44.0,Dairy & Bakery
+CUST-007,Weekly Family Shopper,Weekly,252.9,Grains & Staples
+CUST-008,Weekly Family Shopper,Weekly,262.7,Grains & Staples
+CUST-009,Daily Regular,3-4 times/week,66.3,Snacks & Packaged Foods
+CUST-010,Weekly Family Shopper,Weekly,220.0,Edible Oils & Spices
+CUST-011,Daily Regular,Daily,40.9,Dairy & Bakery
+CUST-012,Occasional Footfall,Monthly,87.0,Personal Care & Hygiene
+CUST-013,Weekly Family Shopper,Weekly,220.9,Edible Oils & Spices
+CUST-014,Daily Regular,3-4 times/week,66.4,Snacks & Packaged Foods
+CUST-015,Budget Essentials,2-3 times/week,46.4,Grains & Staples
+CUST-016,Budget Essentials,2-3 times/week,48.2,Grains & Staples
+CUST-017,Weekly Family Shopper,Weekly,241.6,Edible Oils & Spices
+CUST-018,Occasional Footfall,Monthly,96.2,Personal Care & Hygiene
+CUST-019,Budget Essentials,2-3 times/week,48.4,Grains & Staples
+CUST-020,Budget Essentials,2-3 times/week,50.3,Grains & Staples
+CUST-021,Occasional Footfall,Monthly,91.1,Personal Care & Hygiene
+CUST-022,Weekly Family Shopper,Weekly,233.9,Edible Oils & Spices
+CUST-023,Weekly Family Shopper,Weekly,241.6,Grains & Staples
+CUST-024,Daily Regular,Daily,49.3,Dairy & Bakery
+CUST-025,Budget Essentials,2-3 times/week,48.1,Grains & Staples
+CUST-026,Occasional Footfall,Monthly,96.7,Personal Care & Hygiene
+CUST-027,Occasional Footfall,Monthly,81.5,Personal Care & Hygiene
+CUST-028,Weekly Family Shopper,Weekly,209.7,Edible Oils & Spices
+CUST-029,Occasional Footfall,Monthly,95.1,Personal Care & Hygiene
+CUST-030,Budget Essentials,2-3 times/week,50.8,Grains & Staples
+CUST-031,Occasional Footfall,Monthly,81.9,Personal Care & Hygiene
+CUST-032,Weekly Family Shopper,Weekly,205.5,Edible Oils & Spices
+CUST-033,Occasional Footfall,Monthly,94.0,Personal Care & Hygiene
+CUST-034,Weekly Family Shopper,Weekly,204.5,Edible Oils & Spices
+CUST-035,Occasional Footfall,Monthly,85.4,Personal Care & Hygiene
+CUST-036,Budget Essentials,2-3 times/week,54.5,Grains & Staples
+CUST-037,Daily Regular,Daily,42.2,Dairy & Bakery
+CUST-038,Weekly Family Shopper,Weekly,211.8,Edible Oils & Spices
+CUST-039,Daily Regular,3-4 times/week,63.9,Snacks & Packaged Foods
+CUST-040,Daily Regular,3-4 times/week,63.8,Snacks & Packaged Foods
