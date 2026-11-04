@@ -7,7 +7,16 @@ import pytest
 from agents.business_analyst import BusinessAnalyst
 from database.data_loader import load_all_data
 from database.run_tracker import get_run, list_all_runs, record_run_state
-from langgraph.checkpoint.sqlite import SqliteSaver
+try:
+    from langgraph.checkpoint.sqlite import SqliteSaver
+except ImportError:
+    try:
+        from langgraph_checkpoint_sqlite import SqliteSaver
+    except ImportError:
+        try:
+            from langgraph.checkpoint.memory import MemorySaver as SqliteSaver
+        except ImportError:
+            from langgraph_checkpoint.memory import MemorySaver as SqliteSaver
 from langgraph.types import Command
 import app as dashboard_app
 from workflow.config import BASELINE_MONTHLY_REVENUE, TARGET_MONTHLY_REVENUE

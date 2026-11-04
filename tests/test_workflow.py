@@ -2,7 +2,16 @@
 
 import sqlite3
 import pytest
-from langgraph.checkpoint.sqlite import SqliteSaver
+try:
+    from langgraph.checkpoint.sqlite import SqliteSaver
+except ImportError:
+    try:
+        from langgraph_checkpoint_sqlite import SqliteSaver
+    except ImportError:
+        try:
+            from langgraph.checkpoint.memory import MemorySaver as SqliteSaver
+        except ImportError:
+            from langgraph_checkpoint.memory import MemorySaver as SqliteSaver
 from langgraph.types import Command
 
 from workflow.graph import (
