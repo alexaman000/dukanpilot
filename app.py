@@ -59,13 +59,6 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    .metric-card {
-        background-color: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        padding: 16px;
-        margin-bottom: 12px;
-    }
     .status-badge {
         display: inline-block;
         padding: 4px 12px;
@@ -74,34 +67,34 @@ st.markdown(
         font-weight: 600;
     }
     .badge-simulated {
-        background-color: #e0f2fe;
-        color: #0369a1;
-        border: 1px solid #bae6fd;
+        background-color: rgba(3, 105, 161, 0.18);
+        color: #38bdf8;
+        border: 1px solid #0284c7;
     }
     .badge-approved {
-        background-color: #dcfce7;
-        color: #15803d;
-        border: 1px solid #bbf7d0;
+        background-color: rgba(21, 128, 61, 0.18);
+        color: #4ade80;
+        border: 1px solid #16a34a;
     }
     .badge-paused {
-        background-color: #fef3c7;
-        color: #b45309;
-        border: 1px solid #fde68a;
+        background-color: rgba(180, 83, 9, 0.18);
+        color: #fbbf24;
+        border: 1px solid #d97706;
     }
     .badge-rejected {
-        background-color: #fee2e2;
-        color: #b91c1c;
-        border: 1px solid #fecaca;
+        background-color: rgba(185, 28, 28, 0.18);
+        color: #f87171;
+        border: 1px solid #dc2626;
     }
     .badge-metric {
-        background-color: #f1f5f9;
-        color: #334155;
-        border: 1px solid #cbd5e1;
+        background-color: rgba(100, 116, 139, 0.18);
+        color: #cbd5e1;
+        border: 1px solid #64748b;
     }
     .badge-estimate {
-        background-color: #fae8ff;
-        color: #86198f;
-        border: 1px solid #f0abfc;
+        background-color: rgba(134, 25, 143, 0.18);
+        color: #e879f9;
+        border: 1px solid #c084fc;
     }
     @keyframes soundwave {
         0% { height: 6px; }
@@ -338,12 +331,11 @@ if selected_idx == 0:
             icon = "🚨"
 
         st.markdown(f"**{t('overall_status', lang)}**")
-        st.markdown(
-            f"""<div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
-                <span class="status-badge {badge_class}" style="font-size: 0.95rem;">{icon} {status_info['label']}</span>
-            </div>""",
-            unsafe_allow_html=True,
-        )
+        with st.container(border=True):
+            st.markdown(
+                f"<span class='status-badge {badge_class}' style='font-size: 0.95rem;'>{icon} {status_info['label']}</span>",
+                unsafe_allow_html=True,
+            )
 
     # Status, Most Important Issue, and Next Action (Plain text explanations, no color dependence)
     st.info(
@@ -359,15 +351,9 @@ if selected_idx == 0:
     st.caption("Analytical conclusions translated into simple everyday shopkeeper terms without technical jargon.")
 
     for ins in insights:
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <span style="font-size: 1.25rem;">{ins['icon']}</span> <strong>{ins['topic']}</strong><br/>
-                <span style="color: #334155; line-height: 1.5;">{ins['text']}</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        with st.container(border=True):
+            st.markdown(f"**{ins['icon']} {ins['topic']}**")
+            st.markdown(ins["text"])
 
     st.markdown("---")
 
@@ -394,14 +380,15 @@ if selected_idx == 0:
     )
 
     if current_res is None or workflow_status == "pending":
-        st.markdown(f"*{t('no_active_plan', lang)}*")
-        if st.button(t("btn_run_planner", lang), type="primary", use_container_width=True, key="sh_run_btn"):
-            with st.spinner("DukaanPilot is inspecting store records and formulating recommendations..."):
-                init_state = create_initial_state()
-                res = app.invoke(init_state, config=config)
-                st.session_state["workflow_result"] = res
-                record_run_state(st.session_state["active_thread_id"], res)
-                st.rerun()
+        with st.container(border=True):
+            st.markdown(f"*{t('no_active_plan', lang)}*")
+            if st.button(t("btn_run_planner", lang), type="primary", use_container_width=True, key="sh_run_btn"):
+                with st.spinner("DukaanPilot is inspecting store records and formulating recommendations..."):
+                    init_state = create_initial_state()
+                    res = app.invoke(init_state, config=config)
+                    st.session_state["workflow_result"] = res
+                    record_run_state(st.session_state["active_thread_id"], res)
+                    st.rerun()
 
     elif is_paused:
         st.warning(f"⏸️ **{t('approval_paused_alert', lang)}**")
@@ -416,17 +403,13 @@ if selected_idx == 0:
 
         for idx, act in enumerate(actions, 1):
             view = get_shopkeeper_action_view(act, lang)
-            st.markdown(
-                f"""
-                <div class="metric-card">
-                    <h4 style="margin-top:0;">{idx}. {view['title']}</h4>
-                    <p><strong>{t('why_it_suggests', lang)}:</strong> {view['why']}</p>
-                    <p><strong>{t('expected_benefit', lang)}:</strong> {view['benefit']}</p>
-                    <p><strong>{t('cost_and_risk', lang)}:</strong> {t('cost_label', lang)}: {view['cost']} | {t('risk_label', lang)}: {view['risk']}</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            with st.container(border=True):
+                st.markdown(f"#### {idx}. {view['title']}")
+                st.markdown(f"**{t('why_it_suggests', lang)}:** {view['why']}")
+                st.markdown(f"**{t('expected_benefit', lang)}:** {view['benefit']}")
+                st.caption(
+                    f"💰 **{t('cost_label', lang)}:** {view['cost']}  |  ⚠️ **{t('risk_label', lang)}:** {view['risk']}"
+                )
 
         # Simple 1-Click Approve / Reject / Revise controls
         btn_c1, btn_c2, btn_c3 = st.columns(3)
@@ -531,16 +514,13 @@ if selected_idx == 0:
                 badge_style = "badge-metric"
                 icon_step = "⚪"
 
-            st.markdown(
-                f"""
-                <div class="metric-card" style="min-height: 140px;">
-                    <strong>{step['title']}</strong><br/>
-                    <span class="status-badge {badge_style}" style="margin: 6px 0;">{icon_step} {step['badge']}</span><br/>
-                    <small style="color: #64748b;">{step['note']}</small>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            with st.container(border=True):
+                st.markdown(f"**{step['title']}**")
+                st.markdown(
+                    f"<span class='status-badge {badge_style}' style='margin: 4px 0;'>{icon_step} {step['badge']}</span>",
+                    unsafe_allow_html=True,
+                )
+                st.caption(step["note"])
 
     st.markdown("---")
 
@@ -832,16 +812,9 @@ elif selected_idx == 1:
     st.caption("Read along with the full report below. All figures are calculated from synthetic store records.")
 
     for sec in report["sections"]:
-        with st.container():
-            st.markdown(
-                f"""
-                <div class="metric-card">
-                    <h4 style="margin-top:0; color:#0f172a;">{sec['title']}</h4>
-                    <p style="color:#334155; line-height: 1.6; font-size: 0.95rem;">{sec['text']}</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+        with st.container(border=True):
+            st.markdown(f"#### {sec['title']}")
+            st.markdown(sec["text"])
 
     st.markdown("---")
 
@@ -884,17 +857,13 @@ elif selected_idx == 1:
 
         for idx, act in enumerate(actions, 1):
             view = get_shopkeeper_action_view(act, b_lang)
-            st.markdown(
-                f"""
-                <div class="metric-card">
-                    <h4 style="margin-top:0;">{idx}. {view['title']}</h4>
-                    <p><strong>{t('why_it_suggests', b_lang)}:</strong> {view['why']}</p>
-                    <p><strong>{t('expected_benefit', b_lang)}:</strong> {view['benefit']}</p>
-                    <p><strong>{t('cost_and_risk', b_lang)}:</strong> {t('cost_label', b_lang)}: {view['cost']} | {t('risk_label', b_lang)}: {view['risk']}</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            with st.container(border=True):
+                st.markdown(f"#### {idx}. {view['title']}")
+                st.markdown(f"**{t('why_it_suggests', b_lang)}:** {view['why']}")
+                st.markdown(f"**{t('expected_benefit', b_lang)}:** {view['benefit']}")
+                st.caption(
+                    f"💰 **{t('cost_label', b_lang)}:** {view['cost']}  |  ⚠️ **{t('risk_label', b_lang)}:** {view['risk']}"
+                )
 
         # 1-Click Approve, Reject, Revise Controls
         btn_c1, btn_c2, btn_c3 = st.columns(3)
