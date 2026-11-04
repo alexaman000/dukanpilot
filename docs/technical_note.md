@@ -144,7 +144,7 @@ DukaanPilot AI establishes clear, quantitative benchmarks:
 
 1. **Analytical Accuracy:** 100% agreement between dashboard metrics and manual arithmetic proofs across 91 days of transactions.
 2. **Safety Enforcement:** 100% rejection rate for discount actions >30% and 0 tool executions when a plan is rejected.
-3. **Test Suite Coverage:** 55 automated tests spanning unit arithmetic, action validation, graph execution, state restoration, and failure recovery.
+3. **Test Suite Coverage:** 66+ automated tests spanning unit arithmetic, action validation, graph execution, state restoration, Sarvam AI speech synthesis, bilingual voice reporting, and failure recovery.
 4. **Milestone Tracking:** Clear measurement of monthly revenue trajectory toward the ₹10,000 target:
    - Historical Baseline: ₹8,061.67 / month
    - Simulated Monthly Uplift: +₹960.00 / month (approx. 12% revenue expansion)
@@ -153,7 +153,19 @@ DukaanPilot AI establishes clear, quantitative benchmarks:
 
 ---
 
-## 9. Limitations and Future Improvements
+## 9. AI Voice Business Briefing (Sarvam AI Integration)
+
+To bridge the literacy and digital divide for small shopkeepers, DukaanPilot AI integrates an **AI Voice Business Briefing** powered by **Sarvam AI Text-to-Speech**:
+
+1. **Bilingual Structured Briefing:** Generates a comprehensive 9-section report in both English and everyday natural Hindi, covering sales totals, target pacing, stockout risks, slow-moving inventory, customer visit profiles, opportunities, and AI-recommended actions.
+2. **Sarvam AI Speech Engine:** Connects to `https://api.sarvam.ai/text-to-speech` using Indian voices (`ritu` for Hindi and `priya` for English).
+3. **Chunking & Caching Pipeline:** Splits long reports into sentence-aligned chunks (<1500 characters) to adhere to API constraints, while computing deterministic SHA-256 audio cache keys to eliminate redundant API billing and latency.
+4. **Resilient Offline Fallback:** If Sarvam AI credentials are unset or the network fails, the written bilingual report remains completely readable, and action authorization remains fully accessible.
+5. **Decoupled Approval:** Listening to the voice briefing does not auto-execute actions; shopkeepers must explicitly click Approve, Reject, or Revise to resume the LangGraph workflow.
+
+---
+
+## 10. Limitations and Future Improvements
 
 ### Current Limitations:
 - **Synthetic Boundary:** All customer records, sales transactions, and supplier orders are synthetic. No live WhatsApp messages, SMS, or bank transfers are conducted.
@@ -163,11 +175,11 @@ DukaanPilot AI establishes clear, quantitative benchmarks:
 ### Future Roadmap:
 - **Multi-Tenant Deployment:** Extend database schemas to support multiple micro-retailers with custom inventory catalogs and supplier directories.
 - **Real-Time POS Integration:** Connect read-only connectors to popular Indian retail billing apps (e.g., Vyapar, Khatabook, myBillBook).
-- **Localized Voice Interface:** Introduce Hindi and regional language voice interactions (speech-to-text / text-to-speech) to accommodate varying literacy levels.
+- **Regional Dialect Expansion:** Broaden Sarvam AI speech options to include local dialects such as Khortha, Bhojpuri, and Nagpuri spoken in Jharkhand.
 
 ---
 
-## 10. Disclosure of AI-Assisted Development
+## 11. Disclosure of AI-Assisted Development
 
 In adherence to academic integrity and project transparency standards:
 - AI coding assistants were utilized during development for rapid scaffolding, test generation, and documentation drafting.

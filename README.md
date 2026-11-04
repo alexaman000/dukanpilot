@@ -49,16 +49,31 @@ Micro-retailers often operate on thin margins and lack access to dedicated busin
 * **SQLite Persistence (`workflow/graph.py` & `database/run_tracker.py`):** State serialization and checkpointing via `SqliteSaver` in `database/dukaanpilot.db` supporting session resume across restarts.
 * **Local Simulation Tools (`tools/`):** Safe, offline demonstration tools (`create_simulated_promotion`, `recommend_product_bundle`, `create_reorder_suggestion`, `draft_customer_campaign`).
 * **Outcome Measurement & Replanning (`workflow/evaluator.py`):** Measures simulated uplift vs. verified historical baselines, reflects on learnings, and enforces iteration limits.
-* **Interactive Streamlit Dashboard (`app.py`):** Multi-section retail analytics and operations portal connecting live to the LangGraph workflow and SQLite checkpointer.
-* **Automated Test Suite (`tests/`):** 52 comprehensive unit and integration tests covering data loading, deterministic financial analytics, action validation, human approval pause/resume, tool error recovery, dashboard startup, and state snapshots.
+* **Interactive Streamlit Dashboard (`app.py`):** Multi-section retail analytics and operations portal connecting live to the LangGraph workflow, SQLite checkpointer, Sarvam AI speech engine, and bilingual interface.
+* **AI Voice Business Briefing (`agents/voice_briefing.py` & `tools/sarvam_tts.py`):** Natural Indian Hindi and English spoken briefing powered by Sarvam AI TTS (`bulbul:v3`), including text chunking, SHA-256 audio caching, section-by-section playback, and human approval gates.
+* **Automated Test Suite (`tests/`):** 66 comprehensive unit and integration tests covering data loading, deterministic financial analytics, action validation, human approval pause/resume, tool error recovery, dashboard startup, state snapshots, Sarvam AI speech synthesis, and voice briefing reports.
 
 ---
 
 ## Streamlit Dashboard Features
 
-The web dashboard is organized into 6 distinct sections:
+The web dashboard is organized into accessible sections for both small shopkeepers and technical evaluators:
 
-1. **📊 Business Overview:**
+0. **🏪 Shopkeeper Summary & Actions:**
+   - Friendly greeting: *"Namaste! Here is your shop's business update."*
+   - 4 Simple Plain-Language Metric Cards: Current Monthly Sales (₹9,159), Monthly Goal (₹10,000), Remaining Gap (₹841), and Text-Labeled Status (**"Action required"** / **"Needs attention"** / **"Doing well"**).
+   - 5 Plain-Language Insights generated dynamically from store data without technical jargon.
+   - 1-Click Action Recommendations with **Approve All**, **Reject All**, and **Revise** controls.
+   - Honest 5-stage AI Worker Activity Timeline reflecting real workflow states.
+
+1. **🎙️ AI Voice Business Briefing (Sarvam AI Integration):**
+   - Natural spoken business explanation in Hindi or English powered by Sarvam AI Text-to-Speech.
+   - Friendly assistant character area (**Asha**) with animated soundwave visual feedback when speaking.
+   - Complete 9-section structured business report readable alongside or below the audio.
+   - Play, Pause, Resume, Replay, and Section-by-Section playback options.
+   - Explicit human approval controls after listening (Approve, Reject, Revise) connected directly to LangGraph persistence.
+
+2. **📊 Business Overview:**
    - Real-time financial KPI cards: Total Revenue, Gross Profit, Operating Expenses, Estimated Net Profit, Average Basket Value (ATV).
    - Date period selector ("All Historical Data", "January 2024", "February 2024", "March 2024").
    - Daily sales revenue trajectory chart (Plotly).
@@ -105,6 +120,7 @@ The web dashboard is organized into 6 distinct sections:
 | Layer | Technology | Purpose |
 | :--- | :--- | :--- |
 | **User Interface** | Streamlit & Plotly | Interactive operations dashboard, charts, and Human-in-the-Loop approval gate |
+| **Voice Synthesis** | Sarvam AI TTS (`bulbul:v3`) | Natural Indian English & Hindi spoken business briefings |
 | **Workflow Engine** | LangGraph | Stateful workflow management, interrupt handling, cyclic replanning, and persistence |
 | **Reasoning Core** | Gemini API (`google-genai` / `langchain-google-genai`) | Analytical reasoning, strategic planning, and reflection (with deterministic fallback) |
 | **Data Processing** | Pandas | Deterministic financial metrics, transaction aggregation, and KPI analysis |
@@ -121,8 +137,8 @@ The web dashboard is organized into 6 distinct sections:
 ### 2. Clone Repository & Setup Virtual Environment
 ```bash
 # Clone the repository
-git clone <repository-url>
-cd dukaanpilot-ai
+git clone https://github.com/alexaman000/dukanpilot.git
+cd dukaanpilot
 
 # Create virtual environment
 python -m venv venv
@@ -142,7 +158,24 @@ pip install -r requirements.txt
 ```
 
 ### 4. Configure Environment Variables (Optional)
-Copy `.env.example` to `.env` to supply a Gemini API key:
+Copy `.env.example` to `.env` to supply API keys for Gemini reasoning and Sarvam AI voice synthesis:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env`:
+```ini
+# Gemini API Key for autonomous growth reasoning
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Sarvam AI Key for natural Hindi/English voice briefings
+SARVAM_API_KEY=your_sarvam_api_key_here
+
+# Application Configuration
+APP_ENV=development
+DATABASE_PATH=database/dukaanpilot.db
+```
 ```bash
 cp .env.example .env
 ```

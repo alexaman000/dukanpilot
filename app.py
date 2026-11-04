@@ -1,8 +1,9 @@
 """DukaanPilot AI - Interactive Streamlit Dashboard for Sneha Bhandar.
 
 Autonomous AI Business Growth Worker for micro-retailers in Ranchi, Jharkhand.
-Includes Action-Oriented Shopkeeper Summary, Bilingual (Hindi/English) Support,
-Plain-Language Insights, 1-Click Human Approval, and Full Visual Analytics.
+Includes Action-Oriented Shopkeeper Summary, AI Voice Business Briefing with Sarvam AI,
+Bilingual (Hindi/English) Support, Plain-Language Insights, 1-Click Human Approval,
+and Full Visual Analytics.
 """
 
 from datetime import datetime
@@ -23,9 +24,11 @@ from agents.shopkeeper_insights import (
     get_workflow_timeline,
     t,
 )
+from agents.voice_briefing import generate_business_briefing_report
 from database.data_loader import load_all_data
 from database.run_tracker import list_all_runs, record_run_state
 from langgraph.types import Command
+from tools.sarvam_tts import synthesize_speech
 from workflow import (
     BASELINE_MONTHLY_REVENUE,
     MONTHLY_REVENUE_GROWTH_TARGET,
@@ -36,7 +39,9 @@ from workflow import (
     TARGET_MONTHLY_REVENUE,
     build_growth_workflow,
     create_initial_state,
+    get_sarvam_api_key,
     is_gemini_available,
+    is_sarvam_available,
 )
 from workflow.config import DEFAULT_DB_PATH
 
@@ -50,7 +55,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS for crisp retail analytics appearance and accessible shopkeeper UI
+# Custom CSS for crisp retail analytics appearance, accessible UI, and audio animation
 st.markdown(
     """
     <style>
@@ -98,6 +103,30 @@ st.markdown(
         color: #86198f;
         border: 1px solid #f0abfc;
     }
+    @keyframes soundwave {
+        0% { height: 6px; }
+        50% { height: 26px; }
+        100% { height: 10px; }
+    }
+    .wave-container {
+        display: inline-flex;
+        align-items: flex-end;
+        height: 28px;
+        vertical-align: middle;
+        margin-left: 8px;
+    }
+    .wave-bar {
+        display: inline-block;
+        width: 4px;
+        background-color: #0284c7;
+        margin: 0 2px;
+        border-radius: 2px;
+        animation: soundwave 1.1s infinite ease-in-out;
+    }
+    .wave-bar:nth-child(2) { animation-delay: 0.2s; }
+    .wave-bar:nth-child(3) { animation-delay: 0.4s; }
+    .wave-bar:nth-child(4) { animation-delay: 0.15s; }
+    .wave-bar:nth-child(5) { animation-delay: 0.45s; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -160,6 +189,15 @@ if "workflow_result" not in st.session_state:
 if "lang" not in st.session_state:
     st.session_state["lang"] = "en"
 
+if "nav_selection_index" not in st.session_state:
+    st.session_state["nav_selection_index"] = 0
+
+if "briefing_audio_cache" not in st.session_state:
+    st.session_state["briefing_audio_cache"] = {}
+
+if "assistant_status" not in st.session_state:
+    st.session_state["assistant_status"] = "ready"
+
 
 # -----------------------------------------------------------------------------
 # Sidebar Navigation & Business Identity
@@ -187,10 +225,11 @@ st.session_state["lang"] = lang
 
 st.sidebar.markdown("---")
 
-# Navigation options (Preserving all original sections + Adding primary Shopkeeper Home)
+# Navigation options (Preserving all original sections + Adding Shopkeeper Home & Voice Briefing)
 if lang == "hi":
     nav_labels = [
         "🏪 दुकान डैशबोर्ड (मुख्य सारांश और सुझाव)",
+        "🎙️ आवाज़ में व्यापार रिपोर्ट (AI Voice Briefing)",
         "📊 Business Overview (विस्तृत रिपोर्ट)",
         "🎯 Business Goal (व्यापार लक्ष्य)",
         "🤖 AI Growth Plan (AI विकास योजना)",
@@ -201,6 +240,7 @@ if lang == "hi":
 else:
     nav_labels = [
         "🏪 Shopkeeper Summary & Actions",
+        "🎙️ AI Voice Business Briefing",
         "📊 Business Overview",
         "🎯 Business Goal",
         "🤖 AI Growth Plan",
@@ -209,14 +249,28 @@ else:
         "📜 Run History",
     ]
 
-selected_nav = st.sidebar.radio("Navigation / नेविगेशन", nav_labels, index=0)
+# Clamp navigation index safely
+if st.session_state["nav_selection_index"] >= len(nav_labels):
+    st.session_state["nav_selection_index"] = 0
+
+selected_nav = st.sidebar.radio(
+    "Navigation / नेविगेशन",
+    nav_labels,
+    index=st.session_state["nav_selection_index"],
+    key="nav_radio_selection",
+)
 selected_idx = nav_labels.index(selected_nav)
+st.session_state["nav_selection_index"] = selected_idx
 
 st.sidebar.markdown("---")
 gemini_status = (
     "🟢 Configured (Gemini API)" if is_gemini_available() else "⚪ Offline / Deterministic Mode"
 )
+sarvam_status = (
+    "🟢 Configured (Sarvam AI TTS)" if is_sarvam_available() else "⚪ Audio API Key Pending"
+)
 st.sidebar.caption(f"**Reasoning Engine:**\n{gemini_status}")
+st.sidebar.caption(f"**Voice Engine:**\n{sarvam_status}")
 st.sidebar.caption(f"**Active Session:** `{st.session_state['active_thread_id']}`")
 
 
@@ -236,6 +290,18 @@ if selected_idx == 0:
         f"**{SHOP_NAME}** — {SHOP_ADDRESS} | *{summary['subtitle']}*"
     )
     st.caption(summary["disclaimer"])
+
+    # Quick Action Banner to Jump into Voice Briefing
+    btn_voice_label = (
+        "🎙️ आवाज़ में व्यापार रिपोर्ट सुनें (Listen to Voice Briefing)"
+        if lang == "hi"
+        else "🎙️ Listen to AI Voice Business Briefing (English / हिन्दी)"
+    )
+    if st.button(btn_voice_label, type="primary", use_container_width=True, key="quick_voice_btn"):
+        st.session_state["nav_selection_index"] = 1
+        st.rerun()
+
+    st.write("")
 
     # Friendly Metric Cards
     k1, k2, k3, k4 = st.columns(4)
@@ -514,7 +580,6 @@ if selected_idx == 0:
                 )
                 st.plotly_chart(fig_c, use_container_width=True)
 
-        # Products breakdown
         p1, p2 = st.columns(2)
         with p1:
             st.markdown("#### 🏆 Top-Selling Products")
@@ -551,9 +616,376 @@ if selected_idx == 0:
 
 
 # -----------------------------------------------------------------------------
-# SECTION 1: BUSINESS OVERVIEW (100% PRESERVED ORIGINAL VISUAL ANALYTICS)
+# SECTION 1: AI VOICE BUSINESS BRIEFING (NEW FEATURE: SARVAM AI SPEECH + APPROVAL)
 # -----------------------------------------------------------------------------
 elif selected_idx == 1:
+    st.title("🎙️ AI Voice Business Briefing" if lang == "en" else "🎙️ आवाज़ में व्यापार रिपोर्ट (AI Voice Briefing)")
+    st.markdown(
+        f"Spoken and written business explanation for **{SHOP_NAME}** ({SHOP_ADDRESS}). "
+        f"Powered by Sarvam AI Text-to-Speech in natural Indian Hindi and English."
+    )
+
+    data = get_store_data()
+    analyst = get_analyst(data)
+    app = st.session_state["workflow_app"]
+    config = {"configurable": {"thread_id": st.session_state["active_thread_id"]}}
+
+    current_res = st.session_state["workflow_result"]
+    if current_res is None:
+        current_res = get_workflow_snapshot(app, st.session_state["active_thread_id"])
+        if current_res:
+            st.session_state["workflow_result"] = current_res
+
+    # Controls: Period Selector & Language Toggle
+    p_col1, p_col2 = st.columns([2, 1])
+    with p_col1:
+        period_choice = st.selectbox(
+            "Select Reporting Period / अवधि चुनें:",
+            [
+                "All Historical Data (Jan - Mar 2024)",
+                "January 2024",
+                "February 2024",
+                "March 2024",
+            ],
+            index=0,
+            key="voice_period_select",
+        )
+    with p_col2:
+        voice_lang = st.radio(
+            "Briefing Language / आवाज़ की भाषा:",
+            ["English (en-IN)", "हिन्दी (hi-IN)"],
+            index=0 if lang == "en" else 1,
+            horizontal=True,
+            key="voice_lang_radio",
+        )
+    
+    b_lang = "hi" if "हिन्दी" in voice_lang else "en"
+    lang_code = "hi-IN" if b_lang == "hi" else "en-IN"
+
+    date_bounds = {
+        "All Historical Data (Jan - Mar 2024)": (None, None),
+        "January 2024": ("2024-01-01", "2024-01-31"),
+        "February 2024": ("2024-02-01", "2024-02-29"),
+        "March 2024": ("2024-03-01", "2024-03-31"),
+    }
+    s_date, e_date = date_bounds[period_choice]
+
+    # Generate the structured 9-section report
+    report = generate_business_briefing_report(
+        analyst=analyst,
+        workflow_state=current_res,
+        start_date=s_date,
+        end_date=e_date,
+        period_label=period_choice,
+        lang=b_lang,
+    )
+
+    # 4. AI Character UI (Digital Assistant "Asha")
+    st.markdown("---")
+    char_col1, char_col2 = st.columns([1, 4])
+
+    with char_col1:
+        # Professional, friendly SVG avatar of shop assistant Asha
+        svg_avatar = """
+        <div style="text-align: center; padding: 10px;">
+            <svg width="90" height="90" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="50" cy="50" r="48" fill="#e0f2fe" stroke="#0284c7" stroke-width="3"/>
+              <circle cx="50" cy="40" r="18" fill="#fbcfe8"/>
+              <path d="M32 38C32 25 68 25 68 38C68 29 60 22 50 22C40 22 32 29 32 38Z" fill="#1e293b"/>
+              <path d="M30 40C30 26 70 26 70 40" stroke="#0284c7" stroke-width="3" stroke-linecap="round"/>
+              <rect x="27" y="37" width="5" height="10" rx="2" fill="#0369a1"/>
+              <rect x="68" y="37" width="5" height="10" rx="2" fill="#0369a1"/>
+              <path d="M68 45C68 53 58 55 52 54" stroke="#0284c7" stroke-width="2"/>
+              <circle cx="50" cy="35" r="1.5" fill="#dc2626"/>
+              <circle cx="44" cy="39" r="1.5" fill="#1e293b"/>
+              <circle cx="56" cy="39" r="1.5" fill="#1e293b"/>
+              <path d="M46 45C48 48 52 48 54 45" stroke="#991b1b" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M28 85C28 66 38 60 50 60C62 60 72 66 72 85" fill="#0284c7"/>
+              <path d="M42 60L40 75H60L58 60H42Z" fill="#f8fafc"/>
+              <text x="50" y="71" font-size="6" font-family="sans-serif" font-weight="bold" fill="#0369a1" text-anchor="middle">ASHA</text>
+            </svg>
+        </div>
+        """
+        st.markdown(svg_avatar, unsafe_allow_html=True)
+
+    with char_col2:
+        # Determine status pill
+        ast_status = st.session_state.get("assistant_status", "ready")
+        if ast_status == "speaking":
+            status_html = """
+            <span class="status-badge badge-simulated">
+                🔊 Speaking Briefing...
+                <span class="wave-container">
+                    <span class="wave-bar"></span>
+                    <span class="wave-bar"></span>
+                    <span class="wave-bar"></span>
+                    <span class="wave-bar"></span>
+                    <span class="wave-bar"></span>
+                </span>
+            </span>
+            """
+        elif ast_status == "finished":
+            status_html = '<span class="status-badge badge-approved">✅ Briefing Finished / रिपोर्ट समाप्त</span>'
+        elif ast_status == "paused":
+            status_html = '<span class="status-badge badge-paused">⏸️ Paused / रुका हुआ</span>'
+        else:
+            status_html = '<span class="status-badge badge-approved">🟢 Ready to Speak / तैयार</span>'
+
+        assistant_quote = (
+            "“नमस्ते! मैं आशा हूँ, स्नेहा भंडार की डिजिटल सहायक। मैंने आपकी दुकान की पूरी बिक्री, इन्वेंट्री और लक्ष्यों की समीक्षा की है। "
+            "आप नीचे आवाज़ में पूरी रिपोर्ट सुन सकते हैं और साथ ही लिखित रिपोर्ट भी पढ़ सकते हैं।”"
+            if b_lang == "hi"
+            else "“Namaste! I am Asha, your digital retail assistant. I have reviewed your shop's sales, inventory, and targets. "
+            "You can listen to the spoken explanation below and read along with the full written report.”"
+        )
+
+        st.markdown(f"### Asha (आशा) — *Sneha Bhandar Assistant*")
+        st.markdown(status_html, unsafe_allow_html=True)
+        st.markdown(f"*{assistant_quote}*")
+
+    # Speech Synthesis & Player Controls
+    st.markdown("---")
+    st.subheader("🔊 Audio Playback Controls")
+
+    ctrl_col1, ctrl_col2 = st.columns([2, 1])
+
+    with ctrl_col1:
+        play_btn_text = (
+            "🔊 Generate & Play Complete Briefing"
+            if b_lang == "en"
+            else "🔊 पूरी व्यापार रिपोर्ट सुनें (Sarvam AI Speech)"
+        )
+        gen_audio_btn = st.button(play_btn_text, type="primary", use_container_width=True, key="gen_audio_btn")
+
+    with ctrl_col2:
+        if st.button("🔄 Replay / Reset Audio State", use_container_width=True, key="replay_audio_btn"):
+            st.session_state["assistant_status"] = "ready"
+            st.rerun()
+
+    # Sarvam Speech Generation & Playback
+    audio_key = f"{period_choice}_{b_lang}"
+    audio_data = st.session_state["briefing_audio_cache"].get(audio_key)
+
+    if gen_audio_btn:
+        with st.spinner("Sarvam AI is synthesizing natural speech for Sneha Bhandar..."):
+            audio_bytes, err = synthesize_speech(
+                text=report["full_text"],
+                language_code=lang_code,
+                pace=1.0,
+            )
+            if audio_bytes:
+                st.session_state["briefing_audio_cache"][audio_key] = audio_bytes
+                audio_data = audio_bytes
+                st.session_state["assistant_status"] = "speaking"
+                st.success("✅ Speech synthesized successfully via Sarvam AI.")
+            else:
+                st.session_state["assistant_status"] = "ready"
+                st.warning(
+                    f"⚠️ **Sarvam AI Audio Notice:** {err}\n\n"
+                    "The full written business briefing is displayed below in both English and natural Hindi, "
+                    "and all business recommendations remain fully reviewable and actionable."
+                )
+
+    if audio_data:
+        st.audio(audio_data, format="audio/mp3")
+        st.caption("ℹ️ Use the built-in player controls above to Play, Pause, Seek, or adjust Volume.")
+
+    # Section-by-Section Audio Expander
+    with st.expander("🎧 Listen Section-by-Section / खंड-दर-खंड सुनें", expanded=False):
+        st.caption("Generate and listen to individual sections of the business briefing on demand.")
+        for idx, sec in enumerate(report["sections"], 1):
+            s_c1, s_c2 = st.columns([3, 1])
+            with s_c1:
+                st.markdown(f"**{sec['title']}**")
+            with s_c2:
+                sec_btn = st.button(f"🔊 Listen", key=f"sec_play_{idx}")
+            if sec_btn:
+                with st.spinner(f"Generating audio for Section {idx}..."):
+                    sec_audio, sec_err = synthesize_speech(
+                        text=f"{sec['title']}. {sec['text']}",
+                        language_code=lang_code,
+                    )
+                    if sec_audio:
+                        st.audio(sec_audio, format="audio/mp3")
+                    else:
+                        st.error(f"Could not synthesize section: {sec_err}")
+
+    # Optional Sarvam API Key Configuration Input
+    if not is_sarvam_available():
+        with st.expander("🔑 Add / Test Sarvam API Key (Optional)", expanded=False):
+            st.markdown("If you have a Sarvam AI API key, enter it below to test live voice synthesis directly:")
+            user_sarvam_key = st.text_input(
+                "Sarvam Subscription Key:",
+                type="password",
+                help="Key is kept in your current browser session and never committed to Git.",
+            )
+            if st.button("Save Key to Session", key="save_sarvam_key_btn"):
+                if user_sarvam_key.strip():
+                    os.environ["SARVAM_API_KEY"] = user_sarvam_key.strip()
+                    st.success("Sarvam API key saved for this session! Click 'Generate & Play' above to test.")
+                    st.rerun()
+
+    st.markdown("---")
+
+    # 2. Complete Written Report (Visible so shopkeeper reads along)
+    st.subheader("📄 Complete Written Business Briefing Report" if b_lang == "en" else "📄 संपूर्ण लिखित व्यापार रिपोर्ट")
+    st.caption("Read along with the full report below. All figures are calculated from synthetic store records.")
+
+    for sec in report["sections"]:
+        with st.container():
+            st.markdown(
+                f"""
+                <div class="metric-card">
+                    <h4 style="margin-top:0; color:#0f172a;">{sec['title']}</h4>
+                    <p style="color:#334155; line-height: 1.6; font-size: 0.95rem;">{sec['text']}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    st.markdown("---")
+
+    # 5. Action Approval After Briefing
+    st.subheader(
+        "⚡ Review & Authorize AI Recommendations"
+        if b_lang == "en"
+        else "⚡ अनुशंसित कदम और दुकानदार अनुमोदन"
+    )
+    st.caption(
+        "Authorize, reject, or revise each proposed action. All actions map to safe local simulated tools."
+    )
+
+    interrupts = current_res.get("__interrupt__", []) if current_res else []
+    approval_status = current_res.get("approval_status", "pending") if current_res else "pending"
+    workflow_status = current_res.get("workflow_status", "pending") if current_res else "pending"
+    is_paused = len(interrupts) > 0 or (
+        workflow_status in ("validated", "awaiting_approval") and approval_status == "pending"
+    )
+
+    if current_res is None or workflow_status == "pending":
+        st.info("No active workflow run found for this session. Start the AI Growth Planner to formulate recommendations.")
+        if st.button(t("btn_run_planner", b_lang), type="primary", use_container_width=True, key="voice_run_btn"):
+            with st.spinner("Executing Business Analyst & Growth Planner nodes..."):
+                init_state = create_initial_state()
+                res = app.invoke(init_state, config=config)
+                st.session_state["workflow_result"] = res
+                record_run_state(st.session_state["active_thread_id"], res)
+                st.rerun()
+
+    elif is_paused:
+        if interrupts:
+            actions = interrupts[0].value.get("proposed_actions", [])
+        else:
+            actions = current_res.get("proposed_actions", [])
+
+        st.warning(
+            f"⏸️ **{t('approval_paused_alert', b_lang)}** (Session: `{st.session_state['active_thread_id']}`)"
+        )
+
+        for idx, act in enumerate(actions, 1):
+            view = get_shopkeeper_action_view(act, b_lang)
+            st.markdown(
+                f"""
+                <div class="metric-card">
+                    <h4 style="margin-top:0;">{idx}. {view['title']}</h4>
+                    <p><strong>{t('why_it_suggests', b_lang)}:</strong> {view['why']}</p>
+                    <p><strong>{t('expected_benefit', b_lang)}:</strong> {view['benefit']}</p>
+                    <p><strong>{t('cost_and_risk', b_lang)}:</strong> {t('cost_label', b_lang)}: {view['cost']} | {t('risk_label', b_lang)}: {view['risk']}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        # 1-Click Approve, Reject, Revise Controls
+        btn_c1, btn_c2, btn_c3 = st.columns(3)
+        with btn_c1:
+            if st.button(
+                t("btn_approve_all", b_lang),
+                type="primary",
+                use_container_width=True,
+                key="voice_approve_btn",
+            ):
+                with st.spinner("Resuming workflow with Approval..."):
+                    res = app.invoke(Command(resume="approve"), config=config)
+                    st.session_state["workflow_result"] = res
+                    record_run_state(st.session_state["active_thread_id"], res)
+                    st.success("Plan Approved! Tool execution complete.")
+                    st.rerun()
+
+        with btn_c2:
+            if st.button(
+                t("btn_reject_all", b_lang),
+                type="secondary",
+                use_container_width=True,
+                key="voice_reject_btn",
+            ):
+                with st.spinner("Terminating workflow with Rejection..."):
+                    res = app.invoke(Command(resume="reject"), config=config)
+                    st.session_state["workflow_result"] = res
+                    record_run_state(st.session_state["active_thread_id"], res)
+                    st.error("Plan Rejected. Zero tools were executed.")
+                    st.rerun()
+
+        with btn_c3:
+            with st.expander(t("btn_revise", b_lang)):
+                st.markdown("Choose which actions to execute:")
+                toggles = {}
+                for a in actions:
+                    toggles[a["action_id"]] = st.checkbox(
+                        f"{a.get('action_name', a['action_id'])}",
+                        value=True,
+                        key=f"voice_chk_{a['action_id']}",
+                    )
+                if st.button(
+                    t("btn_apply_revision", b_lang),
+                    use_container_width=True,
+                    key="voice_apply_rev_btn",
+                ):
+                    selected = [a for a in actions if toggles.get(a["action_id"])]
+                    if not selected:
+                        st.warning("Please choose at least one action.")
+                    else:
+                        with st.spinner("Resuming with customized plan..."):
+                            res = app.invoke(
+                                Command(resume={"decision": "revise", "actions": selected}),
+                                config=config,
+                            )
+                            st.session_state["workflow_result"] = res
+                            record_run_state(st.session_state["active_thread_id"], res)
+                            st.success("Custom plan applied and executed.")
+                            st.rerun()
+
+    elif approval_status == "approved":
+        st.success(f"✅ **{t('approval_granted_alert', b_lang)}**")
+        measured = current_res.get("measured_outcomes", {})
+        uplift = measured.get("total_simulated_revenue_uplift_inr", 0.0)
+        new_rate = measured.get("projected_monthly_run_rate_inr", 0.0)
+
+        st.markdown(
+            f"- **Simulated Monthly Uplift:** +₹{uplift:,.2f} *(Simulated projection)*\n"
+            f"- **Projected New Monthly Sales:** ₹{new_rate:,.2f} (Target: ₹10,000)\n"
+            f"- *{t('simulated_action_notice', b_lang)}*"
+        )
+        if st.button("🔄 Start New Recommendation Run / नया सुझाव सत्र", key="voice_new_run_btn"):
+            new_id = f"demo-sneha-{datetime.now().strftime('%m%d-%H%M%S')}"
+            st.session_state["active_thread_id"] = new_id
+            st.session_state["workflow_result"] = None
+            st.rerun()
+
+    elif approval_status == "rejected":
+        st.error(f"❌ **{t('approval_rejected_alert', b_lang)}**")
+        st.caption(t("simulated_action_notice", b_lang))
+        if st.button("🔄 Ask for Fresh Recommendations / नए सुझाव मांगें", key="voice_retry_btn"):
+            new_id = f"demo-sneha-{datetime.now().strftime('%m%d-%H%M%S')}"
+            st.session_state["active_thread_id"] = new_id
+            st.session_state["workflow_result"] = None
+            st.rerun()
+
+
+# -----------------------------------------------------------------------------
+# SECTION 2: BUSINESS OVERVIEW (100% PRESERVED ORIGINAL VISUAL ANALYTICS)
+# -----------------------------------------------------------------------------
+elif selected_idx == 2:
     st.title("📊 Business Overview & Retail Analytics")
     st.markdown(
         f"Operational and financial overview for **{SHOP_NAME}** based on synthetic grocery records."
@@ -714,9 +1146,9 @@ elif selected_idx == 1:
 
 
 # -----------------------------------------------------------------------------
-# SECTION 2: BUSINESS GOAL (100% PRESERVED ORIGINAL VISUAL ANALYTICS)
+# SECTION 3: BUSINESS GOAL (100% PRESERVED ORIGINAL VISUAL ANALYTICS)
 # -----------------------------------------------------------------------------
-elif selected_idx == 2:
+elif selected_idx == 3:
     st.title("🎯 Business Growth Goal")
     st.markdown(
         f"Demonstration objective for **{SHOP_NAME}**: Increase monthly revenue from **₹8,000** to **₹10,000**."
@@ -826,9 +1258,9 @@ elif selected_idx == 2:
 
 
 # -----------------------------------------------------------------------------
-# SECTION 3: AI GROWTH PLAN (100% PRESERVED ORIGINAL WORKFLOW ENGINE)
+# SECTION 4: AI GROWTH PLAN (100% PRESERVED ORIGINAL WORKFLOW ENGINE)
 # -----------------------------------------------------------------------------
-elif selected_idx == 3:
+elif selected_idx == 4:
     st.title("🤖 AI Growth Strategy Planner")
     st.markdown(
         f"Autonomous LangGraph reasoning engine analyzing data and generating growth actions for **{SHOP_NAME}**."
@@ -961,9 +1393,9 @@ elif selected_idx == 3:
 
 
 # -----------------------------------------------------------------------------
-# SECTION 4: HUMAN APPROVAL (100% PRESERVED ORIGINAL APPROVAL GATE)
+# SECTION 5: HUMAN APPROVAL (100% PRESERVED ORIGINAL APPROVAL GATE)
 # -----------------------------------------------------------------------------
-elif selected_idx == 4:
+elif selected_idx == 5:
     st.title("✋ Human-in-the-Loop Approval Gate")
     st.markdown(
         f"Review and authorize proposed business actions for **{SHOP_NAME}** before any tool execution."
@@ -1080,7 +1512,7 @@ elif selected_idx == 4:
                             )
                             st.session_state["workflow_result"] = res
                             record_run_state(st.session_state["active_thread_id"], res)
-                            st.success("Customized plan applied and executed.")
+                            st.success("Custom plan applied and executed.")
                             st.rerun()
 
         elif approval_status == "approved":
@@ -1111,9 +1543,9 @@ elif selected_idx == 4:
 
 
 # -----------------------------------------------------------------------------
-# SECTION 5: EXECUTION AND OUTCOMES (100% PRESERVED ORIGINAL OUTCOME ANALYSIS)
+# SECTION 6: EXECUTION AND OUTCOMES (100% PRESERVED ORIGINAL OUTCOME ANALYSIS)
 # -----------------------------------------------------------------------------
-elif selected_idx == 5:
+elif selected_idx == 6:
     st.title("⚡ Tool Execution & Measured Outcomes")
     st.markdown(
         f"Execution logs and post-intervention outcome analysis for **{SHOP_NAME}**."
@@ -1214,9 +1646,9 @@ elif selected_idx == 5:
 
 
 # -----------------------------------------------------------------------------
-# SECTION 6: RUN HISTORY (100% PRESERVED PERSISTED AUDIT TRAIL)
+# SECTION 7: RUN HISTORY (100% PRESERVED PERSISTED AUDIT TRAIL)
 # -----------------------------------------------------------------------------
-elif selected_idx == 6:
+elif selected_idx == 7:
     st.title("📜 Persisted Workflow Execution History")
     st.markdown(
         f"Audit trail of LangGraph checkpointed runs for **{SHOP_NAME}** stored in `database/dukaanpilot.db`."
