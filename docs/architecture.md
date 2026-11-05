@@ -168,3 +168,63 @@ All tools are local, safe simulations operating strictly on project data:
 * **No Real Outreach:** No real SMS, emails, or WhatsApp messages are transmitted.
 * **Explicit Labeling:** All LLM outputs and tool projections are labeled as estimates.
 * **Deterministic Metrics:** All business mathematics, profits, and margins are computed exclusively via Python and Pandas.
+
+---
+
+## 8. Failure Handling and Recovery Architecture
+
+To ensure operational resilience for small retail owners, DukaanPilot AI integrates structured failure boundaries and state-preserving recovery mechanisms across the workflow lifecycle.
+
+![Failure Recovery Architecture](failure_recovery_diagram.png)
+
+### The 7 Stages of Resilient Failure Recovery:
+
+1. **Failure Detection:** The tool dispatcher (`tools.registry.execute_action`) traps runtime errors in an explicit `try...except Exception` barrier, preventing tool failures from crashing the LangGraph runtime.
+2. **Error Reporting:** Returns `{"status": "failed", "tool": name, "error": str(exc), "parameters": ...}`; `executor_node` records this in state; the UI surfaces explicit alert badges (`🚨 FAILED`).
+3. **State Preservation:** LangGraph's `SqliteSaver` checkpointer serializes complete `WorkflowState` to `database/dukaanpilot.db`, guaranteeing zero state loss across restarts.
+4. **Execution Safety & Zero Phantom Uplift:** Failed actions contribute exactly ₹0 to simulated revenue; independent batch actions continue execution; duplicate execution is blocked.
+5. **Recovery Decision:** The system flags `should_replan = True` in `learning_node` and offers the shopkeeper a choice between Safe Retry/Revision and Safe Cancellation.
+6. **Human Supervision:** Retried or revised actions must re-pass `ActionValidator` and pause at `human_approval` via `interrupt()`; no unverified actions execute autonomously.
+7. **Failure Logging:** Diagnostic logs (timestamp, tool parameters, raw error) are committed to SQLite for auditing and post-mortem analysis.
+
+### Failure Execution & Recovery Sequence:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Owner as Shop Owner
+    participant UI as Dashboard (app.py)
+    participant Graph as LangGraph Engine
+    participant Tool as Tool Dispatcher (registry.py)
+    participant StateStore as SQLite (dukaanpilot.db)
+
+    Owner->>UI: Approve Promotional Campaign
+    UI->>Graph: Command(resume="approve")
+    Graph->>Tool: execute_action("create_simulated_promotion", params)
+    Note over Tool: Unexpected Error (I/O Lock / Parameter Mismatch)
+    Tool->>Tool: Trapped by try...except; construct status='failed'
+    Tool-->>Graph: Return {"status": "failed", "error": "..."}
+    Graph->>StateStore: Checkpoint state with failed action and zero uplift
+    Graph-->>UI: Render red alert badge & error diagnostics
+    UI-->>Owner: Display failure & offer Safe Revision or Cancellation
+    alt Owner selects Revise & Retry
+        Owner->>UI: Adjust parameters & submit revision
+        UI->>Graph: Re-validate schema & request human confirmation
+        Owner->>UI: Confirm revised plan
+        UI->>Graph: Command(resume="approve")
+        Graph->>Tool: Re-dispatch tool with validated parameters
+    else Owner cancels
+        Owner->>UI: Dismiss action / cancel
+        UI->>Graph: Action remains permanently failed; workflow terminates cleanly
+    end
+```
+
+### Failure Handling Evaluation Matrix:
+
+| Failure Condition | Expected Worker Behaviour | Safety Mechanism | Recovery Approach |
+| :--- | :--- | :--- | :--- |
+| **Tool Execution Failure** | Catch error at tool boundary; set status to `"failed"`; log diagnostic error; attribute ₹0 uplift; continue executing other batch actions. | `try...except` isolation in `tools.registry.execute_action`; schema bounds checks; zero-uplift filter in `workflow/evaluator.py`. | Isolate failed action; log details to SQLite; reflect in `learning_node`; allow owner to revise parameters and re-approve via UI. |
+| **Missing or Invalid Business Data** | Halt data ingestion before analytical processing; prevent corrupt data from reaching LLM or tools; alert user. | `database.data_loader.validate_data_integrity()` enforces required files, primary key uniqueness, positive pricing, and non-empty rows. | Report specific missing file or schema breach; fall back to verified default synthetic dataset; generate diagnostic error logs. |
+| **Gemini API Unavailable** | Formulate grounded, actionable growth strategies without crashing, hanging, or requiring internet connectivity. | Heuristic data-grounded fallback generator in `agents.growth_planner.generate_fallback_plan()`; structured JSON parsing guards. | Automatically switch to deterministic rule-based recommendations; tag plan with `planner_source: "heuristic_fallback"`; alert user. |
+| **Interrupted Workflow** | Retain exact state snapshot and pending interrupts; avoid duplicate executions or restarting data analysis from scratch. | LangGraph `SqliteSaver` checkpointer serializes complete `WorkflowState` to `database/dukaanpilot.db` after each node transition. | Re-open session with identical `thread_id`; `app.get_state()` reconstructs state and pending `__interrupt__` payload for seamless resumption. |
+| **Duplicate Execution Attempt** | Execute approved actions exactly once; ignore redundant clicks; prevent duplicate tool dispatch or duplicate discount applications. | Idempotent thread IDs; state-level execution tracking (`workflow_status: "executed"`); Streamlit one-shot button triggers. | Inspect persisted state before tool dispatch; if status is already `"executed"`, return cached execution records without re-running tools. |

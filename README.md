@@ -52,6 +52,7 @@ Micro-retailers often operate on thin margins and lack access to dedicated busin
 * **Interactive Streamlit Dashboard (`app.py`):** Multi-section retail analytics and operations portal connecting live to the LangGraph workflow, SQLite checkpointer, Sarvam AI speech engine, and bilingual interface.
 * **AI Voice Business Briefing (`agents/voice_briefing.py` & `tools/sarvam_tts.py`):** Natural Indian Hindi and English spoken briefing powered by Sarvam AI TTS (`bulbul:v3`), including text chunking, SHA-256 audio caching, section-by-section playback, and human approval gates.
 * **Automated Test Suite (`tests/`):** 66 comprehensive unit and integration tests covering data loading, deterministic financial analytics, action validation, human approval pause/resume, tool error recovery, dashboard startup, state snapshots, Sarvam AI speech synthesis, and voice briefing reports.
+* **Resilient Failure Recovery & Safety Trapping (`tools/registry.py`, `workflow/graph.py`, `workflow/evaluator.py`):** 7-stage failure handling architecture enclosing tool executions in exception barriers, zero phantom uplift attribution, SQLite state durability, diagnostic error logging, and human-supervised safe retries or cancellations.
 
 ---
 
@@ -228,9 +229,11 @@ To restore a pristine demo environment:
 
 ## Documentation Index
 
-- [docs/architecture.md](docs/architecture.md): Complete architecture specification, component boundaries, and state transitions.
+- [docs/DukaanPilot_AI_Technical_Report.pdf](docs/DukaanPilot_AI_Technical_Report.pdf): Publication-grade, comprehensive technical report and architectural specification (PDF format).
+- [docs/architecture.md](docs/architecture.md): Complete architecture specification, component boundaries, state transitions, and failure handling sequence.
 - [docs/architecture.png](docs/architecture.png): High-resolution visual system architecture diagram.
-- [docs/technical_note.md](docs/technical_note.md): In-depth technical note on system design, worker vs. chatbot analysis, safety controls, persistence, and limitations.
+- [docs/failure_recovery_diagram.png](docs/failure_recovery_diagram.png): Visual failure scenario and 7-stage recovery flow diagram.
+- [docs/technical_note.md](docs/technical_note.md): In-depth technical note on system design, worker vs. chatbot analysis, 7-stage failure scenario, safety controls, persistence, and limitations.
 - [docs/demo_script.md](docs/demo_script.md): Step-by-step 5–7 minute oral presentation script and walkthrough guide.
 - [docs/data_dictionary.md](docs/data_dictionary.md): Synthetic schemas, field descriptions, business assumptions, and arithmetic formulas.
 

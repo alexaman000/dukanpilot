@@ -128,13 +128,131 @@ The dispatcher (`tools.registry.execute_action`) wraps each tool in structured e
 
 ---
 
-## 7. Persistence and Failure Recovery
+## 7. Failure Scenario and Recovery Strategy
 
-State durability is established through SQLite checkpointing:
-- **`SqliteSaver` Checkpointer:** Embedded SQLite checkpointer (`database/dukaanpilot.db`) automatically captures the complete graph state at every node transition.
-- **Application Restart Resilience:** If the application process terminates while paused at the approval gate, re-querying `app.get_state({"configurable": {"thread_id": thread_id}})` reconstructs the state snapshot and pending interrupts, allowing the owner to resume without re-running data analysis.
-- **Run History Auditing:** Every workflow execution records metadata in `workflow_run_history` (timestamps, status, actions count, simulated uplift, summary), enabling full inspection in the dashboard.
-- **Idempotent UI Invocations:** The Streamlit dashboard isolates execution triggers to explicit button callbacks (`st.button`). Standard browser refreshes or tab switches query saved snapshots without re-invoking tools.
+In micro-retail automation, an autonomous AI worker must handle unexpected operational and technical failures gracefully. Fragile scripts that crash or—worse—falsely claim success can corrupt business ledgers, order incorrect stock, or mislead store owners regarding their financial standing.
+
+### Scenario: Business Tool Execution Failure
+
+**Operational Context:**
+DukaanPilot AI analyzes 91 days of historical store records for **Sneha Bhandar** (Shiv Shakti Nagar, Booty More, Ranchi). Observing that packaged snacks and beverages exhibit high customer traffic but sub-optimal basket sizes, the Growth Planner (`planner_node`) recommends launching a **"Weekend Family Snack Special"** promotion (a 5% category discount on snacks, projecting an estimated monthly revenue uplift of +₹350 with zero upfront marketing cost).
+
+The shopkeeper reviews the recommendation via the Streamlit dashboard or AI Voice Briefing and clicks **"Approve"**.
+
+The LangGraph engine transitions from the `human_approval` gate to `executor_node`. However, upon dispatching `create_simulated_promotion(promotion_name="Weekend Snack Special", category="Snacks", discount_percentage=5)`, the simulated business tool encounters an **unexpected technical error** (e.g., downstream repository timeout, catalog key mismatch, file system lock, or parameter serialization fault).
+
+### The 7 Stages of Resilient Failure Handling:
+
+1. **Failure Detection:**
+   The tool dispatcher (`tools.registry.execute_action`) encapsulates every tool call within a structured `try...except Exception as exc:` barrier. Rather than permitting an unhandled exception to propagate up the stack and terminate the LangGraph runtime, the failure is intercepted at the boundary. The dispatcher constructs an explicit failure payload:
+   ```python
+   {
+       "status": "failed",
+       "tool": "create_simulated_promotion",
+       "error": "Database lock timeout: Unable to commit promotion record to store repository.",
+       "parameters": {"promotion_name": "Weekend Snack Special", "category": "Snacks", "discount_percentage": 5}
+   }
+   ```
+   Invalid tool names or parameter schema violations are similarly caught before invocation.
+
+2. **Error Reporting:**
+   The system never masks an error or claims false completion. The `executor_node` captures the failure payload and appends an explicit record to `WorkflowState["execution_results"]`:
+   - `action_id`: Unique identifier of the attempted action.
+   - `status`: `"failed"`.
+   - `executed_at`: Timestamp of the failure event.
+   - `error`: Full diagnostic error string.
+   
+   In the user interface (`app.py`), the failure is rendered prominently with an amber/red warning badge (`🚨 FAILED`), ensuring the shopkeeper immediately understands that the action did not execute.
+
+3. **State Preservation:**
+   The workflow leverages LangGraph's native SQLite checkpointer (`SqliteSaver` in `database/dukaanpilot.db`). At every node transition, the full `WorkflowState`—including original business metrics, proposed interventions, validation audit logs, human approval tokens, and partial execution results—is committed to disk. If the server terminates, the browser closes, or power fails, the entire session state is safely restored from the thread checkpoint (`thread_id`), preventing state corruption or data loss.
+
+4. **Execution Safety & Zero Phantom Uplift:**
+   The failed action is strictly marked as `status: "failed"` and is **never** marked as completed. To ensure financial truthfulness, `workflow/evaluator.py` (`measure_execution_outcomes`) partitions execution results:
+   ```python
+   successful_runs = [r for r in exec_results if r.get("status") == "success"]
+   failed_runs = [r for r in exec_results if r.get("status") == "failed"]
+   ```
+   Only `successful_runs` contribute to `total_simulated_revenue_uplift_inr`. The failed promotional campaign contributes exactly **₹0.00** to simulated uplift. The system never fabricates phantom revenue gains. Furthermore, independent actions in the same batch (e.g., a low-stock reorder suggestion) continue to execute independently; one failed tool does not abort or corrupt unrelated valid operations.
+
+5. **Recovery Decision & Strategy:**
+   Following execution, the `learning_node` (`workflow/evaluator.py`) evaluates overall run health. If `failed_actions_count > 0`, the reflection engine sets:
+   - `should_replan = True`
+   - `decision_reason = f"{failed_count} action(s) experienced execution failures. Replanning necessary to adjust parameters."`
+   
+   If loop limits allow (`iteration_count < max_iterations`), the graph routes back to the planner to formulate alternative actions. In the dashboard, the shopkeeper is offered two clear recovery paths:
+   - **Safe Retry / Revision:** Select the failed action under the "Revise / Choose Specific Actions" panel, adjust parameters (e.g., alter the category or timing), and re-submit.
+   - **Safe Cancellation:** Leave the failed action unexecuted; the workflow terminates cleanly, preserving audit logs without retrying corrupted commands.
+
+6. **Human Supervision:**
+   Automated retries that alter retail operational state without human oversight are strictly prohibited. Any retried, modified, or alternative intervention generated after a failure must re-enter the standard lifecycle:
+   - Must pass `ActionValidator` (`agents/action_validator.py`) for schema validity and discount ceilings (≤30%).
+   - Must pause at the `human_approval` gate via LangGraph's `interrupt()` primitive.
+   - Must receive explicit merchant authorization (`approve` or `revise`) before the worker touches any execution tool.
+
+7. **Failure Logging & Audit Trail:**
+   Every failure event is permanently recorded in the system audit trail:
+   - Recorded in `WorkflowState["execution_results"]` with timestamp, parameters, and error trace.
+   - Saved in the SQLite `workflow_run_history` table (recording thread ID, run duration, action counts, failure count, and summary).
+   - Readily inspectable in the **Run History Audit** dashboard tab for debugging, compliance, and operational post-mortems.
+
+---
+
+### Failure Recovery Flow Diagram
+
+The diagram below illustrates the complete sequence from initial proposal through failure detection, state preservation, recovery decision, and human-supervised resolution:
+
+![Failure Recovery Flow Diagram](failure_recovery_diagram.png)
+
+```mermaid
+graph TD
+    A[1. AI Recommendation: Proposed Promotion] --> B[2. Human Approval Gate: Owner Approves]
+    B --> C[3. Tool Execution Engine: executor_node]
+    C --> D{4. Unexpected Technical Error Occurs}
+    
+    D -->|Exception Trapped| E[5. Failure Detection: tools.registry try...except]
+    E --> F[6. Error Logging & State Preservation: dukaanpilot.db]
+    
+    F --> G{7. Recovery Decision Gate}
+    
+    G -->|Path A: Safe Retry / Revise| H[Safe Retry / Parameter Revision]
+    G -->|Path B: Cancel / Abort| I[Cancel Plan / Terminate Run]
+    
+    H --> J[Re-Validation & Mandatory Human Approval]
+    J --> K[Execution Result Verified: Uplift Recorded]
+    
+    I --> L[Action Remains Failed: Zero Uplift Attributed]
+
+    classDef primary fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#ffffff;
+    classDef warning fill:#78350f,stroke:#f59e0b,stroke-width:2px,color:#ffffff;
+    classDef error fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#ffffff;
+    classDef success fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ffffff;
+    classDef audit fill:#581c87,stroke:#a855f7,stroke-width:2px,color:#ffffff;
+
+    class A primary;
+    class B warning;
+    class C,J primary;
+    class D,E error;
+    class F audit;
+    class H,K success;
+    class I,L error;
+```
+
+---
+
+### Failure Handling Evaluation Table
+
+The following evaluation matrix details how DukaanPilot AI addresses primary system failure modes:
+
+| Failure Condition | Expected Worker Behaviour | Safety Mechanism | Recovery Approach |
+| :--- | :--- | :--- | :--- |
+| **Tool Execution Failure** *(e.g., downstream timeout, I/O lock, catalog key mismatch)* | Intercept exception at tool boundary; set status to `"failed"`; record diagnostic error; attribute ₹0 uplift; continue executing unaffected batch actions. | `try...except` isolation in `tools.registry.execute_action`; schema validation bounds; zero-uplift filter in `workflow/evaluator.py`. | Isolate failed action; log details to SQLite; reflect in `learning_node`; allow owner to revise parameters and re-approve via dashboard. |
+| **Missing or Invalid Business Data** *(e.g., absent CSV file, NaN prices, corrupt ledger)* | Halt data ingestion before analytical processing; prevent corrupted data from reaching the LLM or tool execution engine; alert user. | `database.data_loader.validate_data_integrity()` enforces required files, primary key uniqueness, positive pricing, and non-empty rows. | Report specific missing file or schema breach; fall back to verified default synthetic dataset; generate diagnostic error logs. |
+| **Gemini API Unavailable** *(e.g., network timeout, quota exceeded, invalid API key)* | Formulate grounded, actionable growth strategies without crashing, hanging, or requiring internet connectivity. | Heuristic data-grounded fallback generator in `agents.growth_planner.generate_fallback_plan()`; structured JSON parsing guards. | Automatically switch to deterministic rule-based recommendations; tag plan with `planner_source: "heuristic_fallback"`; alert user. |
+| **Interrupted Workflow** *(e.g., browser tab closed, server restart, power outage mid-session)* | Retain exact state snapshot and pending interrupts; avoid duplicate executions or restarting data analysis from scratch. | LangGraph `SqliteSaver` checkpointer serializes complete `WorkflowState` to `database/dukaanpilot.db` after each node transition. | Re-open session with identical `thread_id`; `app.get_state()` reconstructs state and pending `__interrupt__` payload for seamless resumption. |
+| **Duplicate Execution Attempt** *(e.g., repeated button clicks, page refresh, double POST)* | Execute approved actions exactly once; ignore redundant clicks; prevent duplicate tool dispatch or duplicate discount applications. | Idempotent thread IDs; state-level execution tracking (`workflow_status: "executed"`); Streamlit one-shot button triggers. | Inspect persisted state before tool dispatch; if status is already `"executed"`, return cached execution records without re-running tools. |
+
+---
 
 ---
 
@@ -165,17 +283,44 @@ To bridge the literacy and digital divide for small shopkeepers, DukaanPilot AI 
 
 ---
 
-## 10. Limitations and Future Improvements
+## 10. System Limitations and Future Improvements
 
-### Current Limitations:
-- **Synthetic Boundary:** All customer records, sales transactions, and supplier orders are synthetic. No live WhatsApp messages, SMS, or bank transfers are conducted.
-- **Linear Uplift Heuristics:** Simulated tool impacts rely on conservative rule-based elasticity models rather than dynamic multi-agent market simulations.
-- **Single Shop Focus:** Configurations and catalog schemas are tailored to Sneha Bhandar's retail context.
+To maintain rigorous technical honesty and academic integrity, the system explicitly distinguishes between **currently implemented capabilities** verified in our automated test suite and **proposed future improvements** designed for production scaling.
 
-### Future Roadmap:
-- **Multi-Tenant Deployment:** Extend database schemas to support multiple micro-retailers with custom inventory catalogs and supplier directories.
-- **Real-Time POS Integration:** Connect read-only connectors to popular Indian retail billing apps (e.g., Vyapar, Khatabook, myBillBook).
-- **Regional Dialect Expansion:** Broaden Sarvam AI speech options to include local dialects such as Khortha, Bhojpuri, and Nagpuri spoken in Jharkhand.
+### Existing Implemented Capabilities (Verified in Test Suite):
+- **Structured Exception Capture:** The dispatcher (`tools/registry.py`) wraps all tool invocations in `try...except Exception`, capturing errors, preventing unhandled runtime crashes, and returning structured failure payloads (`status: "failed"`).
+- **Zero Phantom Uplift Attribution:** The evaluation engine (`workflow/evaluator.py`) partitions executed tools, ensuring failed actions contribute exactly ₹0 to simulated revenue uplift and increment `failed_actions_count`.
+- **Stateful SQLite Checkpointing:** Every node transition is checkpointed to `database/dukaanpilot.db` via LangGraph's `SqliteSaver`, allowing recovery across restarts without re-running data ingestion.
+- **Deterministic Heuristic Fallback:** When the Gemini API is unreachable, times out, or returns non-compliant schemas, the system transparently falls back to `generate_fallback_plan()`, maintaining full offline operability.
+- **Mandatory Re-Validation on Revision:** When a user customizes or retries actions, the revised plan is passed through `validate_proposed_plan()` before execution, re-verifying parameter bounds and discount ceilings.
+- **Transparent Status Surfacing:** The Streamlit dashboard renders explicit status badges (`🚨 FAILED`), action diagnostics, and audit logs without masking errors.
+
+### Honest Limitations & Disclosures:
+- **No Automated In-Graph Retries Currently Implemented:** The current implementation halts execution of a failed action and surfaces it to the shopkeeper rather than executing automatic blind retries in a background loop.
+- **No Transactional Rollback Mechanisms:** Because all current tools operate in a safe offline simulation environment, complex transactional rollbacks (e.g., compensating two-phase commits) are not implemented.
+- **Synthetic Simulation Boundaries:** All customer records, sales transactions, and supplier orders are synthetic. No live SMS/WhatsApp messages, physical inventory shipments, or banking transactions occur.
+- **Single Shop Focus:** Configuration parameters and catalog schemas are tailored to the retail profile of Sneha Bhandar (Ranchi).
+
+### Proposed Future Improvements & Architecture Roadmap:
+
+1. **Automatic Retry with Controlled Limits (Exponential Backoff):**
+   - Implement an automated retry policy for transient tool and API faults (e.g., maximum 3 retries with jittered exponential backoff: $t_{wait} = 2^{attempt} + \text{jitter}$).
+   - Enforce circuit breakers: if a tool fails 3 consecutive times across runs, transition the tool into a `CIRCUIT_OPEN` state to prevent cascading resource exhaustion.
+
+2. **Stronger API Failure Monitoring and Observability:**
+   - Integrate structured OpenTelemetry instrumentation and Prometheus metrics to track LLM response latency, token consumption, schema violation rates, and tool failure frequencies.
+   - Establish automated webhooks alerting system administrators when the Gemini API or Sarvam AI speech synthesis experiences degraded availability.
+
+3. **Real-World Tool Integration:**
+   - Transition from offline simulated tools to authenticated live integrations with prevalent Indian retail platforms (e.g., read/write connectors for Vyapar, Khatabook, and myBillBook).
+   - Integrate the official WhatsApp Business Cloud API for customer outreach, subject to customer opt-in consent and strict rate limits.
+   - Connect to Open Network for Digital Commerce (ONDC) protocols for automated wholesale replenishment.
+
+4. **Rollback & Compensating Transactions:**
+   - For multi-step operational campaigns, implement the Saga pattern with explicit compensating actions (e.g., if a bundle promotion succeeds but an accompanying inventory reorder fails due to supplier stockouts, automatically trigger a compensating action to unpublish the promotional discount).
+
+5. **Enhanced Audit Observability and Cryptographic Auditing:**
+   - Implement tamper-evident, hash-chained execution logs (SHA-256 state hashing) to guarantee immutable audit trails for regulatory compliance, taxation accounting, and dispute resolution.
 
 ---
 
